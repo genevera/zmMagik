@@ -1,4 +1,4 @@
-
+# TODO reset delay when changing from 1 monitor to the next
 import cv2
 import time
 from tqdm import tqdm
@@ -10,7 +10,7 @@ import zmMagik_helpers.FVS as FVS
 import zmMagik_helpers.utils as utils
 import zmMagik_helpers.globals as g
 
-
+last_mon_proc = None
 det = None
 det2 = None
 ran = datetime.now().strftime('%Y-%d-%m %H:%M:%S')
@@ -46,7 +46,10 @@ def blend_init():
     utils.bold_print('Detection mode is: {}'.format(g.args['detection_type']))
 
 def blend_video(input_file=None, out_file=None, eid = None, mid = None, starttime=None, delay=0):
-    global det, det2, ran
+    global det, det2, ran, last_mon_proc
+    # if sequential=True and starting a new monitors event processing, reset delay
+    if str(mid) != str(last_mon_proc) and g.args['sequential']: delay = 0
+    last_mon_proc = mid
     blend_filename = 'blended-'
     try:
         if g.args['sequential'] == True:

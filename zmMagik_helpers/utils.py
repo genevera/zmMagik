@@ -9,7 +9,110 @@ import re
 
 
 import zmMagik_helpers.globals as g
+def parse_args():
+    ap = configargparse.ArgParser()
+    ap.add_argument("-c", "--config", is_config_file=True, help="configuration file")
+    ap.add_argument("-i", "--input", help="input video to search")
+    ap.add_argument("--find", help="image to look for (needs to be same size/orientation as in video)")
+    ap.add_argument("--mask", help="polygon points of interest within video being processed")
+    ap.add_argument("--skipframes", help="how many frames to skip", type=int, default=1)
+    ap.add_argument("--trailframes", help="how many frames to write after relevant frame", type=int, default=10)
+    ap.add_argument("--blenddelay", help="how much time to wait in seconds before blending next event", type=int,
+                    default=2)
+    ap.add_argument("--fps", help="fps of video, to get timing correct", type=int)
+    ap.add_argument("--threshold",
+                    help="Only for background extraction. a number between 0 to 1 on accuracy threshold. 0.7 or above required",
+                    type=float_71, default=0.7)
+    ap.add_argument("--confidence", help="Only for YOLO. a number between 0 to 1 on minimum confidence score",
+                    type=float_01, default=0.6)
+    ap.add_argument("-a", "--all", action='store_true', help="process all frames, don't stop at first find")
+    ap.add_argument("-w", "--write", action='store_true',
+                    help="create video with matched frames. Only applicable for --find")
+    ap.add_argument("--interactive", action='store_true',
+                    help="move to next frame after keypress. Press 'c' to remove interactive")
 
+    ap.add_argument("--eventid", help="Event id")
+    ap.add_argument("--username", help="ZM username")
+    ap.add_argument("--password", help="ZM password")
+    ap.add_argument("--portal", help="ZM portal")
+    ap.add_argument("--apiportal", help="ZM API portal")
+    ap.add_argument("--detection_type", help="Type of detection for blending", default="background_extraction")
+    ap.add_argument("--config_file", help="Config file for ML based detection with full path")
+    ap.add_argument("--weights_file", help="Weights file for ML based detection with full path")
+    ap.add_argument("--labels_file", help="labels file for ML based detection with full path")
+    ap.add_argument("--meta_file", help="meta file for Yolo when using GPU mode")
+
+    ap.add_argument('--gpu', nargs='?', default=False, const=True, type=str2bool,
+                    help='enable GPU processing. Needs libdarknet.so compiled in GPU mode')
+
+    ap.add_argument("--from", help="arbitrary time range like '24 hours ago' or formal dates")
+    ap.add_argument("--to", help="arbitrary time range like '2 hours ago' or formal dates")
+    ap.add_argument("--monitors", help="comma separated list of monitor IDs to search")
+    ap.add_argument("--resize", help="resize factor (0.5 will halve) for both matching template and video size",
+                    type=float)
+    ap.add_argument("--dumpjson", nargs='?', default=False, const=True, type=str2bool,
+                    help="write analysis to JSON file")
+    #
+    ap.add_argument("--annotate", nargs='?', const=True, default=False, type=str2bool,
+                    help="annotates all videos in the time range. Only applicable if using --from --to or --eventid")
+    #
+    ap.add_argument("--blend", nargs='?', const=True, default=False, type=str2bool,
+                    help="overlay all videos in the time range. Only applicable if using --from --to or --eventid")
+    ap.add_argument("--detectpattern", help="which objects to detect (supports regex)", default=".*")
+    ap.add_argument("--relevantonly", nargs='?', const=True, default=True, type=str2bool,
+                    help="Only write frames that have detections")
+    #
+    ap.add_argument("--drawboxes", nargs='?', const=True, default=False, type=str2bool,
+                    help="draw bounding boxes aroun objects in final video")
+    #
+    ap.add_argument("--minblendarea",
+                    help="minimum area in pixels to accept as object of interest in forgeground extraction. Only applicable if using--blend",
+                    type=float, default=1500)
+    ap.add_argument("--fontscale", help="Size of font scale (1, 1.5 etc). Only applicable if using--blend", type=float,
+                    default=1)
+    #
+    ap.add_argument("--download", nargs='?', const=True, type=str2bool,
+                    help="Downloads remote videos first before analysis. Seems some openCV installations have problems with remote downloads",
+                    default=True)
+    #
+    ap.add_argument("--display", nargs='?', const=True, default=False, type=str2bool,
+                    help="displays processed frames. Only applicable if using --blend")
+    #
+    ap.add_argument("--show_progress", nargs='?', const=True, default=True, type=str2bool,
+                    help="Shows progress bars")
+    #
+    ap.add_argument("--objectonly", nargs='?', const=True, default=False, type=str2bool,
+                    help="Only process events where objects are detected. Only applicable if using --blend")
+    ap.add_argument("--minalarmframes", help="how many alarmed frames for an event to be selected", type=int,
+                    default=None)
+    ap.add_argument("--maxalarmframes", help="how many alarmed frames for an event to be skipped", type=int,
+                    default=None)
+    ap.add_argument("--duration", help="how long (in seconds) to make the video", type=int, default=0)
+    #
+    ap.add_argument("--balanceintensity", nargs='?', const=True, default=False, type=str2bool,
+                    help="If enabled, will try and match frame intensities - the darker frame will be aligned to match the brighter one. May be useful for day to night transitions, or not :-p. Works with --blend")
+    #
+    ap.add_argument('--present', nargs='?', default=True, const=True, type=str2bool,
+                    help='look for frames where image in --match is present')
+    ap.add_argument('--sequential', nargs='?', default=True, const=True, type=str2bool, help='Process events'
+                                                                                                   'per monitor (i.e. you specify 2 monitors, it does the events for 1 monitor first, then the next monitor')
+    try:
+        g.args = vars(ap.parse_args())
+    except Exception as e:
+        print('error ConfigArgParse - {}'.format(e))
+    process_config()
+
+def float_01(x):
+    x = float(x)
+    if x < 0.0 or x > 1.0:
+        raise argparse.ArgumentTypeError('Float {} not in range of 0.1 to 1.0'.format(x))
+    return x
+
+def float_71(x):
+    x = float(x)
+    if x < 0.7 or x > 1.0:
+        raise argparse.ArgumentTypeError('Float {} not in range of 0.7 to 1.0'.format(x))
+    return x
 #https://stackoverflow.com/a/43357954/1361529
 def str2bool(v):
     if isinstance(v, bool):
