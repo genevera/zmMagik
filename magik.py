@@ -65,8 +65,9 @@ utils.init_colorama()
 try:
     import pyzm.ZMLog as zmlog
     zmlog.init(name='zmMagik')
-except ImportError as e:
-    print('Could not import ZMLog, function will be disabled:' + str(e))
+# probably should just catch Exception here tbh    
+except (FileNotFoundError, ImportError) as e: 
+    print('Could not init ZMLog, function will be disabled:' + str(e))
     zmlog = None
 utils.parse_args()
 if g.args['blend']:
